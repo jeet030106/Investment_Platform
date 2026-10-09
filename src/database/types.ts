@@ -6,11 +6,13 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+// -- Step 4 --
+// Write down the migration file for the changes required, both when run and when reversed
 export interface Users {
-    id: number;
-    name: string;
+    user_id?: Generated<string>;
+    user_name: string;
     email: string;
-    password_hash: string;
+    password: string;
     created_at: Generated<Timestamp>;
     updated_at: Generated<Timestamp>;
 };
