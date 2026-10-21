@@ -31,3 +31,26 @@ export async function register(
         next(error);
     }
 }
+
+export async function login(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+) {
+    try {
+        const { email, password } = req.body;
+
+        const response = await authService.login(
+            email,
+            password,
+        );
+
+        res.status(201).json({
+            data: response,
+            message: "Login Successfully",
+            success: true,
+        });
+    } catch (error) {
+        next(error);
+    }
+}

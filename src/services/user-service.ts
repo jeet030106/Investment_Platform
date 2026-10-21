@@ -25,73 +25,96 @@ class UserService {
         return user;
     }
 
+    async create(input: {
+        user_name: string;
+        email: string;
+        password: string;
+    }) {
+        const email = input.email.trim().toLowerCase();
+
+        const existingUser =
+            await repository.getUserByEmail(email);
+
+        if (existingUser) {
+            const error = new Error("Email is already registered.");
+            Object.assign(error, { statusCode: 409 });
+            throw error;
+        }
+
+        return repository.create({
+            ...input,
+            email,
+            user_name: input.user_name.trim(),
+        });
+    }
+
     async updateUser(userId: string, input: UpdateUserInput) {
-        const updates: UpdateUserInput = {};
+            const updates: UpdateUserInput = {};
 
-        if (input.user_name !== undefined) {
-            const name = input.user_name.trim();
+            if (input.user_name !== undefined) {
+                const name = input.user_name.trim();
 
-            if (!name) {
-                throw createError("Name cannot be empty", 400);
+                if (!name) {
+                    throw createError("Name cannot be empty", 400);
+                }
+
+                updates.user_name = name;
             }
 
-            updates.user_name = name;
-        }
+            if (input.email !== undefined) {
+                const email = input.email.trim().toLowerCase();
 
-        if (input.email !== undefined) {
-            const email = input.email.trim().toLowerCase();
+                if (!EMAIL_REGEX.test(email)) {
+                    throw createError("Invalid email address", 400);
+                }
 
-            if (!EMAIL_REGEX.test(email)) {
-                throw createError("Invalid email address", 400);
+                const existing = await repository.getUserByEmail(email);
+
+                if (existing && existing.user_id !== userId) {
+                    throw createError("Email is already registered", 409);
+                }
+
+                updates.email = email;
             }
 
-            const existing = await repository.getUserByEmail(email);
-
-            if (existing && existing.user_id !== userId) {
-                throw createError("Email is already registered", 409);
+            if (Object.keys(updates).length === 0) {
+                throw createError("Provide at least one field to update", 400);
             }
 
-            updates.email = email;
+            try {
+                const updatedUser = await repository.updateUser(
+                    userId,
+                    updates,
+                );
+
+                if (!updatedUser) {
+                    throw createError("User not found", 404);
+                }
+
+                return updatedUser;
+            } catch (error) {
+                if (
+                    typeof error === "object" &&
+                    error !== null &&
+                    "code" in error &&
+                    error.code === "23505"
+                ) {
+                    throw createError("Email is already registered", 409);
+                }
+
+                throw error;
+            }
         }
 
-        if (Object.keys(updates).length === 0) {
-            throw createError("Provide at least one field to update", 400);
-        }
+    async deleteUser(userId: string) {
+            const deletedUser = await repository.deleteUser(userId);
 
-        try {
-            const updatedUser = await repository.updateUser(
-                userId,
-                updates,
-            );
-
-            if (!updatedUser) {
+            if (!deletedUser) {
                 throw createError("User not found", 404);
             }
 
-            return updatedUser;
-        } catch (error) {
-            if (
-                typeof error === "object" &&
-                error !== null &&
-                "code" in error &&
-                error.code === "23505"
-            ) {
-                throw createError("Email is already registered", 409);
-            }
-
-            throw error;
+            return { message: "Account deleted successfully" };
         }
     }
-
-    async deleteUser(userId: string) {
-        const deletedUser = await repository.deleteUser(userId);
-
-        if (!deletedUser) {
-            throw createError("User not found", 404);
-        }
-
-        return { message: "Account deleted successfully" };
-    }
-}
 
 export default UserService;
