@@ -8,9 +8,14 @@ export type CreateUserInput = Pick<
     "user_name" | "email" | "password"
 >;
 
+export type UpdateUserInput = Partial<
+    Pick<Users, "user_name" | "email">
+>;
+
 // -- Step 7 --
-// Create a Repository class which will help to carry out operations with the db
+// Create a Repository class which will help to carry out operations with the dd
 class UserRepository {
+    // Fetch a user's public profile.
     async getUser(userId: string) {
         return db
             .selectFrom("users")
@@ -25,6 +30,8 @@ class UserRepository {
             .executeTakeFirst();
     }
 
+    // Fetch credentials for login and duplicate-email checks.
+    // Never return this result directly from a controller.
     async getUserByEmail(email: string) {
         return db
             .selectFrom("users")
@@ -32,6 +39,7 @@ class UserRepository {
                 "user_id",
                 "user_name",
                 "email",
+                "password",
                 "created_at",
                 "updated_at",
             ])
@@ -51,6 +59,35 @@ class UserRepository {
                 "updated_at",
             ])
             .executeTakeFirstOrThrow();
+    }
+
+    async updateUser(
+        userId: string,
+        input: UpdateUserInput,
+    ) {
+        return db
+            .updateTable("users")
+            .set({
+                ...input,
+                updated_at: new Date(),
+            })
+            .where("user_id", "=", userId)
+            .returning([
+                "user_id",
+                "user_name",
+                "email",
+                "created_at",
+                "updated_at",
+            ])
+            .executeTakeFirst();
+    }
+
+    async deleteUser(userId: string) {
+        return db
+            .deleteFrom("users")
+            .where("user_id", "=", userId)
+            .returning("user_id")
+            .executeTakeFirst();
     }
 }
 
