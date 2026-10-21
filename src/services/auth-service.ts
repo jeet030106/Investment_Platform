@@ -118,6 +118,47 @@ class AuthService {
             throw error;
         }
     }
+
+    // Login business logic
+    async login(email : string, password: string) {
+        const emailInput = email?.trim().toLowerCase();
+
+        if(!email || !password){
+            throw createError(
+                "Email and Password are Required",
+                400
+            )
+        }
+
+        const user = await userRepository.getUserByEmail(emailInput)
+        if(!user){
+            throw createError(
+                "Kindly create an account",
+                401
+            )
+        }
+
+        const isPassword = await bcrypt.compare(
+            password,
+            user.password
+        )
+
+        if(!isPassword){
+            throw createError(
+                "Invalid Password",
+                400
+            )
+        }
+        const { password: _password, ...safeUser } = user;
+
+        const accessToken = createAccessToken(user.user_id)
+        return {
+            user: safeUser,
+            accessToken,
+            tokenType: "Bearer",
+            expiresIn: JWT_EXPIRES_IN
+        }
+    }
 }
 
 export default AuthService;
