@@ -7,7 +7,7 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
 export interface Users {
-    user_id: Generated<String>;
+    user_id: Generated<string>;
     user_name: string;
     email: string;
     password: string;
