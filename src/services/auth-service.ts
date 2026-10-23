@@ -1,10 +1,13 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import type { Users } from "../database/types.js";
+import {UserRepository} from "../repository/index.js";
 
-import UserRepository, {
-    type CreateUserInput,
-} from "../repository/user-repository.js";
+export type CreateUserInput = Pick<
+    Users,
+    "user_name" | "email" | "password"
+>;
 
 const userRepository = new UserRepository();
 
