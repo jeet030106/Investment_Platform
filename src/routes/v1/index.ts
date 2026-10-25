@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { createUser, getUser } from "../../controllers/user-controller.js";
 import authRouter from "./auth/index.js"
+import stockRouter from "./stocks/index.js"
 const router = Router();
 
 
@@ -11,4 +12,5 @@ router.post("/users", createUser);
 router.get("/users/:id", getUser);
 
 router.use("/auth", authRouter);
+router.use("/stock", stockRouter)
 export default router;
