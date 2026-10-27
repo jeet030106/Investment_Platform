@@ -6,13 +6,12 @@ import {
 
 import {
     isValidUuid,
-    parseDateOnly,
+    parseDateInput,
 } from "../utils/validators.js";
 
 class StockPriceService {
     private readonly stockRepository = new StockRepository();
     private readonly stockPriceRepository = new StockPriceRepository();
-
 
     async getPriceHistory(
         stockId: string,
@@ -25,15 +24,20 @@ class StockPriceService {
             });
         }
 
-        const from = parseDateOnly(fromInput);
-        const to = parseDateOnly(toInput);
+        const parsedFrom = parseDateInput(fromInput);
+        const parsedTo = parseDateInput(toInput);
 
-        if (!from || !to) {
+        if (!parsedFrom || !parsedTo) {
             throw Object.assign(
-                new Error("Dates must be valid and use YYYY-MM-DD format"),
+                new Error(
+                    "Dates must be YYYY-MM-DD or UTC timestamps in ISO 8601 format, e.g. 2026-10-25T02:49:24.768Z"
+                ),
                 { statusCode: 400 }
             );
         }
+
+        const from = parsedFrom.date;
+        const to = parsedTo.date;
 
         if (from.getTime() > to.getTime()) {
             throw Object.assign(
@@ -50,8 +54,11 @@ class StockPriceService {
             });
         }
 
-        // Include the complete final UTC day.
-        to.setUTCHours(23, 59, 59, 999);
+        // For date-only 'to' inputs, include the complete UTC day.
+        // For timestamps, preserve the exact requested instant.
+        if (parsedTo.dateOnly) {
+            to.setUTCHours(23, 59, 59, 999);
+        }
 
         const history = await this.stockPriceRepository.getHistory(
             stockId,
@@ -71,34 +78,6 @@ class StockPriceService {
             count: history.length,
             history,
         };
-    }
-
-
-    private parseDate(value: string): Date {
-        // Accept date-only inputs in YYYY-MM-DD format.
-        const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-
-        if (!isDateOnly) {
-            throw Object.assign(
-                new Error("Dates must use YYYY-MM-DD format"),
-                { statusCode: 400 }
-            );
-        }
-
-        const date = new Date(`${value}T00:00:00.000Z`);
-
-        // Reject invalid dates such as 2026-02-30.
-        if (
-            Number.isNaN(date.getTime()) ||
-            date.toISOString().slice(0, 10) !== value
-        ) {
-            throw Object.assign(
-                new Error(`Invalid date: ${value}`),
-                { statusCode: 400 }
-            );
-        }
-
-        return date;
     }
 }
 
