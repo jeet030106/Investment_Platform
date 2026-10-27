@@ -1,6 +1,7 @@
 
 import db from "../database/database.js";
 import type { Stocks } from "../database/types.js";
+import {StockSeed} from "../model/stock-model.js"
 
 export type CreateStockInput = Pick<
     Stocks,
@@ -94,6 +95,31 @@ class StockRepository {
             .returningAll()
             .executeTakeFirstOrThrow();
     }
+
+    async upsertMany(inputs: StockSeed[]) {
+        if (inputs.length === 0) {
+            return [];
+        }
+
+        return db
+            .insertInto("stocks")
+            .values(
+                inputs.map((stock) => ({
+                    symbol: stock.symbol.trim().toUpperCase(),
+                    company_name: stock.companyName.trim(),
+                    exchange: stock.exchange.trim().toUpperCase(),
+                }))
+            )
+            .onConflict((oc) =>
+                oc.columns(["exchange", "symbol"]).doUpdateSet((eb) => ({
+                    company_name: eb.ref("excluded.company_name"),
+                    updated_at: new Date(),
+                }))
+            )
+            .returningAll()
+            .execute();
+    }
+
 
 }
 

@@ -1,5 +1,8 @@
 
-import { StockProviderResponse} from "../model/stock-model.js";
+import {
+    StockProviderResponse,
+    TejHqSnapshotResponse,
+} from "../model/stock-model.js";
 
 class StockPricesProvider {
     private readonly baseUrl = "https://api.tejhq.dev";
@@ -29,7 +32,6 @@ class StockPricesProvider {
 
         const result: unknown = await response.json();
 
-        // Basic envelope validation before trusting the response.
         if (
             typeof result !== "object" ||
             result === null ||
@@ -41,6 +43,46 @@ class StockPricesProvider {
         }
 
         return result as StockProviderResponse;
+    }
+
+    async getMarketSnapshot(
+        exchange: "NSE" | "BSE",
+        date: string
+    ): Promise<TejHqSnapshotResponse> {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new Error("Date must use YYYY-MM-DD format");
+        }
+
+        const url = new URL(
+            `/v1/snapshot/${exchange.toLowerCase()}`,
+            this.baseUrl
+        );
+
+        url.searchParams.set("date", date);
+
+        const response = await fetch(url, {
+            signal: AbortSignal.timeout(30_000),
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                `TejHQ snapshot failed: ${response.status} ${response.statusText}`
+            );
+        }
+
+        const result: unknown = await response.json();
+
+        if (
+            typeof result !== "object" ||
+            result === null ||
+            !("data" in result) ||
+            !Array.isArray(result.data) ||
+            !("meta" in result)
+        ) {
+            throw new Error("Invalid snapshot response from TejHQ");
+        }
+
+        return result as TejHqSnapshotResponse;
     }
 }
 

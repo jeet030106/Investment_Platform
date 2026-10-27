@@ -4,10 +4,12 @@ import {
     StockRepository,
     StockPriceRepository,
 } from "../repository/index.js";
+
 import type {
     HistoricalPriceInput,
     StockSeed,
     StockIngestionResult,
+    MarketSnapshotIngestionResult,
 } from "../model/stock-model.js";
 
 class StockIngestionService {
@@ -96,6 +98,108 @@ class StockIngestionService {
             fetched: prices.length,
             inserted: insertedRows.length,
             skipped: prices.length - insertedRows.length,
+        };
+    }
+
+    async ingestMarketSnapshot(
+        exchange: "NSE" | "BSE",
+        date: string
+    ): Promise<MarketSnapshotIngestionResult> {
+        // 1. Fetch the full-market snapshot.
+        const snapshot = await this.provider.getMarketSnapshot(
+            exchange,
+            date
+        );
+
+        // 2. Only import ordinary equity series with usable data.
+        const eligibleRows = snapshot.data.filter((row) =>
+            row.series === "EQ" &&
+            typeof row.symbol === "string" &&
+            /^[A-Z0-9][A-Z0-9&-]{0,29}$/i.test(row.symbol) &&
+            typeof row.name === "string" &&
+            row.name.trim().length > 0 &&
+            Number.isFinite(row.close) &&
+            row.close > 0
+        );
+
+        // Remove duplicate symbols within the provider response.
+        const uniqueRows = [
+            ...new Map(
+                eligibleRows.map((row) => [
+                    row.symbol.toUpperCase(),
+                    row,
+                ])
+            ).values(),
+        ];
+
+        // 3. Upsert all stock metadata in bulk.
+        const stockInputs: StockSeed[] = uniqueRows.map((row) => ({
+            symbol: row.symbol.toUpperCase(),
+            companyName: row.name.trim(),
+            exchange,
+        }));
+
+        const savedStocks =
+            await this.stockRepository.upsertMany(stockInputs);
+
+        // 4. Map symbols to the DB-generated stock IDs.
+        const stockIdBySymbol = new Map(
+            savedStocks.map((stock) => [
+                stock.symbol.toUpperCase(),
+                stock.stock_id,
+            ])
+        );
+
+        const recordedAt = new Date(`${date}T00:00:00.000Z`);
+
+        if (
+            Number.isNaN(recordedAt.getTime()) ||
+            recordedAt.toISOString().slice(0, 10) !== date
+        ) {
+            throw new Error(`Invalid snapshot date: ${date}`);
+        }
+
+        const priceInputs: HistoricalPriceInput[] = uniqueRows.flatMap(
+            (row) => {
+                const stockId = stockIdBySymbol.get(
+                    row.symbol.toUpperCase()
+                );
+
+                if (!stockId) {
+                    return [];
+                }
+
+                return [{
+                    stock_id: stockId,
+                    price: row.close.toFixed(4),
+                    recorded_at: recordedAt,
+                    source: "tejhq",
+                }];
+            }
+        );
+
+        // 5. Insert in batches to keep SQL statements manageable.
+        let pricesInserted = 0;
+        const batchSize = 500;
+
+        for (let i = 0; i < priceInputs.length; i += batchSize) {
+            const batch = priceInputs.slice(i, i + batchSize);
+
+            const inserted =
+                await this.stockPriceRepository
+                    .insertManyIgnoreDuplicates(batch);
+
+            pricesInserted += inserted.length;
+        }
+
+        return {
+            exchange,
+            date,
+            received: snapshot.data.length,
+            eligible: uniqueRows.length,
+            stocksProcessed: savedStocks.length,
+            pricesInserted,
+            pricesSkipped: priceInputs.length - pricesInserted,
         };
     }
 }

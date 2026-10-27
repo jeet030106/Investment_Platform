@@ -43,3 +43,34 @@ export interface StockIngestionResult {
     inserted: number;
     skipped: number;
 }
+
+export interface SnapshotRow {
+    symbol: string;
+    series: string;
+    isin: string;
+    name: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    last: number;
+    prev_close: number;
+    volume: number;
+    turnover: number;
+    trades: number;
+}
+
+export interface TejHqSnapshotResponse {
+    data: SnapshotRow[];
+    meta: Record<string, unknown>;
+}
+
+export interface MarketSnapshotIngestionResult {
+    exchange: string;
+    date: string;
+    received: number;
+    eligible: number;
+    stocksProcessed: number;
+    pricesInserted: number;
+    pricesSkipped: number;
+}
