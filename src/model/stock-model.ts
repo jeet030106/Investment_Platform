@@ -21,3 +21,25 @@ export interface StockProviderResponse {
         to: string;
     };
 }
+
+
+export interface StockSeed {
+    symbol: string;
+    companyName: string;
+    exchange: string;
+}
+
+export interface HistoricalPriceInput {
+    stock_id: string;
+    price: string;
+    recorded_at: Date;
+    source: string;
+}
+
+export interface StockIngestionResult {
+    symbol: string;
+    exchange: string;
+    fetched: number;
+    inserted: number;
+    skipped: number;
+}
