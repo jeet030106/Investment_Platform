@@ -1,6 +1,6 @@
 
 import db from "../database/database.js";
-import type { StockPrices } from "../database/types.js";
+import type { HistoricalPriceInput } from "../model/stock-model.js";
 
 export interface CreateStockPriceInput {
     stock_id: string;
@@ -11,17 +11,17 @@ export interface CreateStockPriceInput {
 
 class StockPriceRepository {
     async create(input: CreateStockPriceInput) {
-    return db
-        .insertInto("stock_prices")
-        .values({
-            stock_id: input.stock_id,
-            price: input.price,
-            recorded_at: input.recorded_at,
-            source: input.source,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
-}
+        return db
+            .insertInto("stock_prices")
+            .values({
+                stock_id: input.stock_id,
+                price: input.price,
+                recorded_at: input.recorded_at,
+                source: input.source,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+    }
 
     async getLatestByStockId(stockId: string) {
         return db
@@ -72,6 +72,29 @@ class StockPriceRepository {
             .limit(safeLimit)
             .execute();
     }
+
+    async insertManyIgnoreDuplicates(inputs: HistoricalPriceInput[]) {
+        if (inputs.length === 0) {
+            return [];
+        }
+
+        return db
+            .insertInto("stock_prices")
+            .values(
+                inputs.map((input) => ({
+                    stock_id: input.stock_id,
+                    price: input.price,
+                    recorded_at: input.recorded_at,
+                    source: input.source,
+                }))
+            )
+            .onConflict((oc) =>
+                oc.columns(["stock_id", "recorded_at"]).doNothing()
+            )
+            .returning("price_id")
+            .execute();
+    }
+
 }
 
 export default StockPriceRepository;

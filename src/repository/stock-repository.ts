@@ -76,6 +76,27 @@ class StockRepository {
             .returningAll()
             .executeTakeFirstOrThrow();
     }
+
+    async upsert(input: CreateStockInput) {
+        return db
+            .insertInto("stocks")
+            .values({
+                symbol: input.symbol.trim().toUpperCase(),
+                company_name: input.company_name.trim(),
+                exchange: input.exchange.trim().toUpperCase(),
+            })
+            .onConflict((oc) =>
+                oc.columns(["exchange", "symbol"]).doUpdateSet({
+                    company_name: input.company_name.trim(),
+                    updated_at: new Date(),
+                })
+            )
+            .returningAll()
+            .executeTakeFirstOrThrow();
+    }
+
 }
+
+
 
 export default StockRepository;
