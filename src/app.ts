@@ -1,5 +1,8 @@
 import express from "express";
 import routes from "./routes/index.js";
+import { startStockIngestionJob } from "./jobs/stock-ingestion-job.js";
+
+
 
 const app = express();
 
@@ -12,5 +15,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api", routes);
+// Cron-Job to fetch the market details when closed.
+startStockIngestionJob();
 
 export default app;

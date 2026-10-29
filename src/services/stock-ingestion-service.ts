@@ -24,6 +24,52 @@ class StockIngestionService {
     private readonly stockRepository = new StockRepository();
     private readonly stockPriceRepository = new StockPriceRepository();
 
+    /**
+     * Converts a trading date into a UTC timestamp for the given Indian
+     * market-session time.
+     *
+     * 09:15 IST = 03:45 UTC
+     * 15:30 IST = 10:00 UTC
+     */
+    private getMarketTimestamp(
+        date: string,
+        session: "open" | "close"
+    ): Date {
+        const [year, month, day] = date.split("-").map(Number);
+
+        const timestamp =
+            session === "open"
+                ? Date.UTC(year, month - 1, day, 3, 45, 0, 0)
+                : Date.UTC(year, month - 1, day, 10, 0, 0, 0);
+
+        return new Date(timestamp);
+    }
+
+    /**
+     * Creates two historical observations for one daily provider record:
+     * opening price at 09:15 IST and closing price at 15:30 IST.
+     */
+    private createDailyPriceInputs(
+        stockId: string,
+        date: string,
+        open: number,
+        close: number
+    ): HistoricalPriceInput[] {
+        return [
+            {
+                stock_id: stockId,
+                price: open.toFixed(4),
+                recorded_at: this.getMarketTimestamp(date, "open"),
+                source: "tejhq",
+            },
+            {
+                stock_id: stockId,
+                price: close.toFixed(4),
+                recorded_at: this.getMarketTimestamp(date, "close"),
+                source: "tejhq",
+            },
+        ];
+    }
 
     async ingestDailyPrices(
         stockInput: StockSeed,
@@ -46,14 +92,14 @@ class StockIngestionService {
             throw new Error("Invalid stock ingestion request");
         }
 
-        // 2. Fetch and validate provider data.
+        // 2. Fetch daily market data.
         const response = await this.provider.getDailyPrices(
             symbol,
             from,
             to
         );
 
-        // Checking whether the desired response is received or not
+        // 3. Verify that the response matches the requested stock and dates.
         if (
             response.meta.symbol.trim().toUpperCase() !== symbol ||
             response.meta.exchange.trim().toUpperCase() !== exchange ||
@@ -65,7 +111,7 @@ class StockIngestionService {
             );
         }
 
-        // 3. Validate the complete batch before modifying the database.
+        // 4. Validate the entire batch before modifying the database.
         const seenDates = new Set<string>();
 
         const validatedRows = response.data.map((item) => {
@@ -92,24 +138,29 @@ class StockIngestionService {
             return item;
         });
 
-        // 4. Upsert stock metadata only after validation succeeds.
+        // 5. Upsert stock metadata after validation succeeds.
         const stock = await this.stockRepository.upsert({
             symbol,
             company_name: stockInput.companyName.trim(),
             exchange,
         });
 
-        // 5. Convert validated data to database input.
-        const prices: HistoricalPriceInput[] = validatedRows.map((item) => ({
-            stock_id: stock.stock_id,
-            price: item.close.toFixed(4),
-            recorded_at: new Date(`${item.date}T00:00:00.000Z`),
-            source: "tejhq",
-        }));
+        // 6. Create opening and closing observations for each trading date.
+        const prices: HistoricalPriceInput[] = validatedRows.flatMap(
+            (item) =>
+                this.createDailyPriceInputs(
+                    stock.stock_id,
+                    item.date,
+                    item.open,
+                    item.close
+                )
+        );
 
-        // 6. Insert prices, skipping existing stock/date combinations.
+        // 7. Insert observations, skipping existing stock/timestamp pairs.
         const insertedRows =
-            await this.stockPriceRepository.insertManyIgnoreDuplicates(prices);
+            await this.stockPriceRepository.insertManyIgnoreDuplicates(
+                prices
+            );
 
         return {
             symbol,
@@ -120,48 +171,57 @@ class StockIngestionService {
         };
     }
 
-
-
     async ingestMarketSnapshot(
         exchange: "NSE" | "BSE",
         date: string
     ): Promise<MarketSnapshotIngestionResult> {
         // 1. Validate the requested snapshot date.
         if (!isValidDateOnly(date)) {
-            throw new Error("Snapshot date must be a valid YYYY-MM-DD date");
+            throw new Error(
+                "Snapshot date must be a valid YYYY-MM-DD date"
+            );
         }
 
-        // 2. Fetch the market snapshot.
-        const snapshot = await this.provider.getMarketSnapshot(exchange, date);
-
-        // 3. Filter ordinary equity rows with valid symbols and usable prices.
-        const eligibleRows = snapshot.data.filter((row) =>
-            row.series === "EQ" &&
-            isValidStockSymbol(row.symbol) &&
-            typeof row.name === "string" &&
-            row.name.trim().length > 0 &&
-            Number.isFinite(row.close) &&
-            row.close > 0
+        // 2. Fetch the full-market snapshot.
+        const snapshot = await this.provider.getMarketSnapshot(
+            exchange,
+            date
         );
 
-        // 4. Deduplicate symbols within the response.
+        // 3. Keep ordinary equity rows with valid symbols and closing prices.
+        const eligibleRows = snapshot.data.filter(
+            (row) =>
+                row.series === "EQ" &&
+                isValidStockSymbol(row.symbol) &&
+                typeof row.name === "string" &&
+                row.name.trim().length > 0 &&
+                Number.isFinite(row.close) &&
+                row.close > 0
+        );
+
+        // 4. Deduplicate symbols within the provider response.
         const uniqueRows = [
             ...new Map(
-                eligibleRows.map((row) => [row.symbol.trim().toUpperCase(), row])
+                eligibleRows.map((row) => [
+                    row.symbol.trim().toUpperCase(),
+                    row,
+                ])
             ).values(),
         ];
 
-        // Validate all remaining price rows before writing.
+        // 5. Validate all retained market-data rows before database writes.
         for (const row of uniqueRows) {
             if (
                 !Number.isFinite(row.open) ||
                 !Number.isFinite(row.high) ||
                 !Number.isFinite(row.low) ||
+                !Number.isFinite(row.close) ||
                 !Number.isFinite(row.last) ||
                 !Number.isFinite(row.prev_close) ||
                 row.open <= 0 ||
                 row.high <= 0 ||
                 row.low <= 0 ||
+                row.close <= 0 ||
                 row.last <= 0 ||
                 row.prev_close <= 0 ||
                 row.low > row.high ||
@@ -184,16 +244,18 @@ class StockIngestionService {
             }
         }
 
-        // 5. Prepare stock metadata.
+        // 6. Prepare stock metadata.
         const stockInputs: StockSeed[] = uniqueRows.map((row) => ({
             symbol: row.symbol.trim().toUpperCase(),
             companyName: row.name.trim(),
             exchange,
         }));
 
-        // 6. Upsert stocks in bulk.
-        const savedStocks = await this.stockRepository.upsertMany(stockInputs);
+        // 7. Upsert stock metadata in bulk.
+        const savedStocks =
+            await this.stockRepository.upsertMany(stockInputs);
 
+        // Map each symbol to its database-generated stock ID.
         const stockIdBySymbol = new Map(
             savedStocks.map((stock) => [
                 stock.symbol.toUpperCase(),
@@ -201,25 +263,27 @@ class StockIngestionService {
             ])
         );
 
-        const recordedAt = new Date(`${date}T00:00:00.000Z`);
+        // 8. Create opening and closing observations for each eligible stock.
+        const priceInputs: HistoricalPriceInput[] = uniqueRows.flatMap(
+            (row) => {
+                const stockId = stockIdBySymbol.get(
+                    row.symbol.trim().toUpperCase()
+                );
 
-        // 7. Convert snapshot prices to database input.
-        const priceInputs: HistoricalPriceInput[] = uniqueRows.flatMap((row) => {
-            const stockId = stockIdBySymbol.get(row.symbol.toUpperCase());
+                if (!stockId) {
+                    return [];
+                }
 
-            if (!stockId) {
-                return [];
+                return this.createDailyPriceInputs(
+                    stockId,
+                    date,
+                    row.open,
+                    row.close
+                );
             }
+        );
 
-            return [{
-                stock_id: stockId,
-                price: row.close.toFixed(4),
-                recorded_at: recordedAt,
-                source: "tejhq",
-            }];
-        });
-
-        // 8. Insert in batches to keep SQL statements manageable.
+        // 9. Insert observations in batches of 500.
         let pricesInserted = 0;
         const batchSize = 500;
 
@@ -227,7 +291,8 @@ class StockIngestionService {
             const batch = priceInputs.slice(i, i + batchSize);
 
             const inserted =
-                await this.stockPriceRepository.insertManyIgnoreDuplicates(batch);
+                await this.stockPriceRepository
+                    .insertManyIgnoreDuplicates(batch);
 
             pricesInserted += inserted.length;
         }
@@ -242,7 +307,6 @@ class StockIngestionService {
             pricesSkipped: priceInputs.length - pricesInserted,
         };
     }
-
 }
 
 export default StockIngestionService;
