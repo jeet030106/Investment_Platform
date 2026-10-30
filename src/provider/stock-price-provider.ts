@@ -4,6 +4,12 @@ import {
     TejHqSnapshotResponse,
 } from "../model/stock-model.js";
 
+import {
+    isValidStockProviderResponse,
+    isValidTejHqSnapshotResponse,
+    isValidDateOnly,
+} from "../utils/validators.js";
+
 class StockPricesProvider {
     private readonly baseUrl = "https://api.tejhq.dev";
 
@@ -12,8 +18,17 @@ class StockPricesProvider {
         from: string,
         to: string
     ): Promise<StockProviderResponse> {
+        if (
+            !symbol.trim() ||
+            !isValidDateOnly(from) ||
+            !isValidDateOnly(to) ||
+            from > to
+        ) {
+            throw new Error("Invalid symbol or daily-price date range");
+        }
+
         const url = new URL(
-            `/v1/ohlcv/nse/${encodeURIComponent(symbol)}`,
+            `/v1/ohlcv/nse/${encodeURIComponent(symbol.trim().toUpperCase())}`,
             this.baseUrl
         );
 
@@ -26,31 +41,42 @@ class StockPricesProvider {
 
         if (!response.ok) {
             throw new Error(
-                `TejHQ API error: ${response.status} ${response.statusText}`
+                `TejHQ daily-price request failed: HTTP ${response.status} ${response.statusText}`
             );
         }
 
-        const result: unknown = await response.json();
+        let result: unknown;
 
-        if (
-            typeof result !== "object" ||
-            result === null ||
-            !("data" in result) ||
-            !Array.isArray(result.data) ||
-            !("meta" in result)
-        ) {
-            throw new Error("Invalid response received from TejHQ");
+        try {
+            result = await response.json();
+        } catch {
+            throw new Error("TejHQ returned invalid JSON for daily prices");
         }
 
-        return result as StockProviderResponse;
+        if (!isValidStockProviderResponse(result)) {
+            throw new Error("Invalid daily-price response received from TejHQ");
+        }
+
+        if (
+            result.meta.symbol.toUpperCase() !== symbol.trim().toUpperCase() ||
+            result.meta.exchange.toUpperCase() !== "NSE" ||
+            result.meta.from !== from ||
+            result.meta.to !== to
+        ) {
+            throw new Error(
+                "TejHQ daily-price response does not match the requested symbol, exchange, or date range"
+            );
+        }
+
+        return result;
     }
 
     async getMarketSnapshot(
         exchange: "NSE" | "BSE",
         date: string
     ): Promise<TejHqSnapshotResponse> {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            throw new Error("Date must use YYYY-MM-DD format");
+        if (!isValidDateOnly(date)) {
+            throw new Error("Snapshot date must be a valid YYYY-MM-DD date");
         }
 
         const url = new URL(
@@ -66,23 +92,23 @@ class StockPricesProvider {
 
         if (!response.ok) {
             throw new Error(
-                `TejHQ snapshot failed: ${response.status} ${response.statusText}`
+                `TejHQ snapshot request failed: HTTP ${response.status} ${response.statusText}`
             );
         }
 
-        const result: unknown = await response.json();
+        let result: unknown;
 
-        if (
-            typeof result !== "object" ||
-            result === null ||
-            !("data" in result) ||
-            !Array.isArray(result.data) ||
-            !("meta" in result)
-        ) {
-            throw new Error("Invalid snapshot response from TejHQ");
+        try {
+            result = await response.json();
+        } catch {
+            throw new Error("TejHQ returned invalid JSON for market snapshot");
         }
 
-        return result as TejHqSnapshotResponse;
+        if (!isValidTejHqSnapshotResponse(result)) {
+            throw new Error("Invalid market snapshot response received from TejHQ");
+        }
+
+        return result;
     }
 }
 
