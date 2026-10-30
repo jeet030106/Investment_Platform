@@ -2,12 +2,11 @@
 import { Server } from "socket.io";
 import type { Server as HttpServer } from "node:http";
 
+import { SOCKET_EVENTS } from "../events/socket-events.js";
+import { getStockRoom, getMarketRoom } from "../utils/socket-room.js";
+
 let io: Server | null = null;
 
-/**
- * Initializes the Socket.IO server.
- */
-// server is an HttpServer with which the ws will build the connection
 export function initializeSocket(server: HttpServer): Server {
 
     if (io) {
@@ -15,31 +14,63 @@ export function initializeSocket(server: HttpServer): Server {
     }
 
     io = new Server(server);
-
-    // Triggered whenever a client establishes a connection.
+    // The socket variable reperesent a particluar connection
     io.on("connection", (socket) => {
 
-        console.log(`[Socket.IO] Client connected: ${socket.id}`);
+        console.log(`[Socket.IO] Connected: ${socket.id}`);
 
-        // Triggered whenever a client disconnects.
+        // Subscribe to a particular stock.
+        socket.on(SOCKET_EVENTS.STOCK_SUBSCRIBE, (symbol: unknown) => {
+
+            if (typeof symbol !== "string" || !symbol.trim()) {
+                socket.emit(SOCKET_EVENTS.SOCKET_ERROR, {
+                    message: "Invalid stock symbol",
+                });
+                return;
+            }
+
+            const room = getStockRoom(symbol);
+
+            socket.join(room);
+
+            console.log(
+                `[Socket.IO] ${socket.id} joined ${room}`
+            );
+        });
+
+        // Unsubscribe from a particular stock.
+        socket.on(SOCKET_EVENTS.STOCK_UNSUBSCRIBE, (symbol: unknown) => {
+
+            if (typeof symbol !== "string" || !symbol.trim()) {
+                socket.emit(SOCKET_EVENTS.SOCKET_ERROR, {
+                    message: "Invalid stock symbol",
+                });
+                return;
+            }
+
+            const room = getStockRoom(symbol);
+
+            socket.leave(room);
+
+            console.log(
+                `[Socket.IO] ${socket.id} left ${room}`
+            );
+        });
+
         socket.on("disconnect", (reason) => {
             console.log(
-                `[Socket.IO] Client disconnected: ${socket.id}`,
+                `[Socket.IO] Disconnected: ${socket.id}`,
                 reason
             );
         });
 
     });
 
-    console.log("[Socket.IO] Server initialized successfully");
+    console.log("[Socket.IO] Initialized successfully");
 
     return io;
 }
 
-/**
- * Returns the initialized Socket.IO instance.
- */
-// Rather than creating a new server for different application we use the initialised server
 export function getIO(): Server {
 
     if (!io) {
