@@ -91,7 +91,13 @@ class StockPriceRepository {
             .onConflict((oc) =>
                 oc.columns(["stock_id", "recorded_at"]).doNothing()
             )
-            .returning("price_id")
+            .returning([
+                "price_id",
+                "stock_id",
+                "price",
+                "recorded_at",
+                "source",
+            ])
             .execute();
     }
 

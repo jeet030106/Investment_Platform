@@ -17,6 +17,7 @@ import {
     isValidDateOnly,
     isValidStockSymbol,
     isValidTejHqDailyPrice,
+    isValidTejHqSnapshotResponse
 } from "../utils/validators.js";
 
 class StockIngestionService {
@@ -171,6 +172,7 @@ class StockIngestionService {
         };
     }
 
+
     async ingestMarketSnapshot(
         exchange: "NSE" | "BSE",
         date: string
@@ -188,18 +190,22 @@ class StockIngestionService {
             date
         );
 
-        // 3. Keep ordinary equity rows with valid symbols and closing prices.
+        // 3. Validate the complete provider response.
+        if (!isValidTejHqSnapshotResponse(snapshot)) {
+            throw new Error(
+                "Invalid market snapshot response from TejHQ"
+            );
+        }
+
+        // 4. Keep ordinary equity rows with valid symbols and company names.
         const eligibleRows = snapshot.data.filter(
             (row) =>
                 row.series === "EQ" &&
                 isValidStockSymbol(row.symbol) &&
-                typeof row.name === "string" &&
-                row.name.trim().length > 0 &&
-                Number.isFinite(row.close) &&
-                row.close > 0
+                row.name.trim().length > 0
         );
 
-        // 4. Deduplicate symbols within the provider response.
+        // 5. Deduplicate symbols within the provider response.
         const uniqueRows = [
             ...new Map(
                 eligibleRows.map((row) => [
@@ -209,41 +215,6 @@ class StockIngestionService {
             ).values(),
         ];
 
-        // 5. Validate all retained market-data rows before database writes.
-        for (const row of uniqueRows) {
-            if (
-                !Number.isFinite(row.open) ||
-                !Number.isFinite(row.high) ||
-                !Number.isFinite(row.low) ||
-                !Number.isFinite(row.close) ||
-                !Number.isFinite(row.last) ||
-                !Number.isFinite(row.prev_close) ||
-                row.open <= 0 ||
-                row.high <= 0 ||
-                row.low <= 0 ||
-                row.close <= 0 ||
-                row.last <= 0 ||
-                row.prev_close <= 0 ||
-                row.low > row.high ||
-                row.open < row.low ||
-                row.open > row.high ||
-                row.close < row.low ||
-                row.close > row.high ||
-                row.last < row.low ||
-                row.last > row.high ||
-                !Number.isSafeInteger(row.volume) ||
-                row.volume < 0 ||
-                !Number.isFinite(row.turnover) ||
-                row.turnover < 0 ||
-                !Number.isSafeInteger(row.trades) ||
-                row.trades < 0
-            ) {
-                throw new Error(
-                    `Invalid market snapshot price data for ${row.symbol}`
-                );
-            }
-        }
-
         // 6. Prepare stock metadata.
         const stockInputs: StockSeed[] = uniqueRows.map((row) => ({
             symbol: row.symbol.trim().toUpperCase(),
@@ -252,14 +223,23 @@ class StockIngestionService {
         }));
 
         // 7. Upsert stock metadata in bulk.
-        const savedStocks =
-            await this.stockRepository.upsertMany(stockInputs);
+        const savedStocks = await this.stockRepository.upsertMany(stockInputs);
 
         // Map each symbol to its database-generated stock ID.
+        // Used while creating price inputs.
         const stockIdBySymbol = new Map(
             savedStocks.map((stock) => [
                 stock.symbol.toUpperCase(),
                 stock.stock_id,
+            ])
+        );
+
+        // Map each stock ID to its complete stock record.
+        // Used later while preparing WebSocket events.
+        const stockById = new Map(
+            savedStocks.map((stock) => [
+                stock.stock_id,
+                stock,
             ])
         );
 
@@ -290,13 +270,31 @@ class StockIngestionService {
         for (let i = 0; i < priceInputs.length; i += batchSize) {
             const batch = priceInputs.slice(i, i + batchSize);
 
-            const inserted =
-                await this.stockPriceRepository
-                    .insertManyIgnoreDuplicates(batch);
+            const inserted = await this.stockPriceRepository.insertManyIgnoreDuplicates(batch);
 
             pricesInserted += inserted.length;
+
+            // 10. Identify the stock associated with each inserted price.
+            for (const price of inserted) {
+                const stock = stockById.get(price.stock_id);
+
+                if (!stock) {
+                    continue;
+                }
+
+                console.log({
+                    stockId: stock.stock_id,
+                    symbol: stock.symbol,
+                    exchange: stock.exchange,
+                    price: price.price,
+                    recordedAt: price.recorded_at,
+                });
+
+                // Next: publish this update to the stock's Socket.IO room.
+            }
         }
 
+        // 11. Return ingestion statistics.
         return {
             exchange,
             date,
@@ -307,6 +305,7 @@ class StockIngestionService {
             pricesSkipped: priceInputs.length - pricesInserted,
         };
     }
+
 }
 
 export default StockIngestionService;
