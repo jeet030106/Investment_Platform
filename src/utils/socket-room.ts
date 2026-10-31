@@ -1,8 +1,8 @@
 
 // Naming Conventions for room name
-// Gives a room name for a stock ("Reliance, TCS")
-export function getStockRoom(symbol: string): string {
-    return `stock:${symbol.trim().toUpperCase()}`;
+// Using the stock id to decide the room
+export function getStockRoom(stockId: string): string {
+    return `stock:${stockId}`;
 }
 
 // Gives the room for exchange (NSE/BSE)

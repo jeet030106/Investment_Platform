@@ -1,4 +1,5 @@
 import {StockProviderResponse, TejHqDailyPrice} from "../model/stock-model.js"
+import type { TejHqSnapshotResponse } from "../model/stock-model.js";
 
 
 const UUID_REGEX =
@@ -203,9 +204,6 @@ export function isValidDailyPriceRequest(
     );
 }
 
-
-import type { TejHqSnapshotResponse } from "../model/stock-model.js";
-
 export function isValidTejHqSnapshotResponse(
     value: unknown
 ): value is TejHqSnapshotResponse {
@@ -240,19 +238,34 @@ export function isValidTejHqSnapshotResponse(
         const row = item as Record<string, unknown>;
 
         return (
+            // Basic field validation
             typeof row.symbol === "string" &&
             typeof row.series === "string" &&
             typeof row.isin === "string" &&
             typeof row.name === "string" &&
+
+            // All prices must be finite and positive
             isFiniteNumber(row.open) &&
             isFiniteNumber(row.high) &&
             isFiniteNumber(row.low) &&
             isFiniteNumber(row.close) &&
             isFiniteNumber(row.last) &&
             isFiniteNumber(row.prev_close) &&
-            isFiniteNumber(row.volume) &&
-            isFiniteNumber(row.turnover) &&
-            isFiniteNumber(row.trades)
+            row.open > 0 &&
+            row.high > 0 &&
+            row.low > 0 &&
+            row.close > 0 &&
+            row.last > 0 &&
+            row.prev_close > 0 &&
+
+            // OHLC values must be within the daily range
+            row.low <= row.high &&
+            row.open >= row.low &&
+            row.open <= row.high &&
+            row.close >= row.low &&
+            row.close <= row.high &&
+            row.last >= row.low &&
+            row.last <= row.high
         );
     });
 }
