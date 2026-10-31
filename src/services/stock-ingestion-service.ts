@@ -20,6 +20,14 @@ import {
     isValidTejHqSnapshotResponse
 } from "../utils/validators.js";
 
+import {
+    stockEventPublisher,
+} from "../events/stock-event-publisher.js";
+
+import type {
+    StockPriceUpdateEvent,
+} from "../events/stock-event-types.js";
+
 class StockIngestionService {
     private readonly provider = new StockPriceProvider();
     private readonly stockRepository = new StockRepository();
@@ -173,6 +181,7 @@ class StockIngestionService {
     }
 
 
+
     async ingestMarketSnapshot(
         exchange: "NSE" | "BSE",
         date: string
@@ -223,10 +232,10 @@ class StockIngestionService {
         }));
 
         // 7. Upsert stock metadata in bulk.
-        const savedStocks = await this.stockRepository.upsertMany(stockInputs);
+        const savedStocks =
+            await this.stockRepository.upsertMany(stockInputs);
 
         // Map each symbol to its database-generated stock ID.
-        // Used while creating price inputs.
         const stockIdBySymbol = new Map(
             savedStocks.map((stock) => [
                 stock.symbol.toUpperCase(),
@@ -235,7 +244,6 @@ class StockIngestionService {
         );
 
         // Map each stock ID to its complete stock record.
-        // Used later while preparing WebSocket events.
         const stockById = new Map(
             savedStocks.map((stock) => [
                 stock.stock_id,
@@ -270,31 +278,35 @@ class StockIngestionService {
         for (let i = 0; i < priceInputs.length; i += batchSize) {
             const batch = priceInputs.slice(i, i + batchSize);
 
-            const inserted = await this.stockPriceRepository.insertManyIgnoreDuplicates(batch);
+            const inserted =
+                await this.stockPriceRepository
+                    .insertManyIgnoreDuplicates(batch);
 
             pricesInserted += inserted.length;
 
-            // 10. Identify the stock associated with each inserted price.
-            for (const price of inserted) {
-                const stock = stockById.get(price.stock_id);
+            // 10. Prepare WebSocket events for newly inserted prices.
+            const priceUpdateEvents: StockPriceUpdateEvent[] =
+                inserted.flatMap((price) => {
+                    const stock = stockById.get(price.stock_id);
 
-                if (!stock) {
-                    continue;
-                }
+                    if (!stock) {
+                        return [];
+                    }
 
-                console.log({
-                    stockId: stock.stock_id,
-                    symbol: stock.symbol,
-                    exchange: stock.exchange,
-                    price: price.price,
-                    recordedAt: price.recorded_at,
+                    return [{
+                        stockId: stock.stock_id,
+                        symbol: stock.symbol,
+                        exchange: stock.exchange,
+                        price: String(price.price),
+                        recordedAt: price.recorded_at.toISOString(),
+                    }];
                 });
 
-                // Next: publish this update to the stock's Socket.IO room.
-            }
+            // 11. Publish the price updates to their respective stock rooms.
+            stockEventPublisher.publishPriceUpdates(priceUpdateEvents);
         }
 
-        // 11. Return ingestion statistics.
+        // 12. Return ingestion statistics.
         return {
             exchange,
             date,
@@ -305,6 +317,7 @@ class StockIngestionService {
             pricesSkipped: priceInputs.length - pricesInserted,
         };
     }
+
 
 }
 
