@@ -91,25 +91,6 @@ export class WatchlistRepository {
             .returning("watchlist_id")
             .executeTakeFirst();
     }
-
-    async removeStock(
-        watchlistStockId: string,
-        userId: string,
-    ) {
-        return db
-            .deleteFrom("watchlist_stocks")
-            .where("watchlist_stock_id", "=", watchlistStockId)
-            .where(
-                "watchlist_id",
-                "in",
-                db
-                    .selectFrom("watchlists")
-                    .select("watchlist_id")
-                    .where("user_id", "=", userId),
-            )
-            .returning("watchlist_stock_id")
-            .executeTakeFirst();
-    }
 }
 
 export default WatchlistRepository;
