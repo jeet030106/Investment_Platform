@@ -2,7 +2,6 @@ import { Router } from "express";
 import { createUser, getUser } from "../../controllers/user-controller.js";
 import authRouter from "./auth/index.js"
 import stockRouter from "./stocks/index.js"
-import watchlistRouter from "./watchlists/index.js"
 const router = Router();
 
 
@@ -14,5 +13,4 @@ router.get("/users/:id", getUser);
 
 router.use("/auth", authRouter);
 router.use("/stock", stockRouter)
-router.use("/watchlist", watchlistRouter);
 export default router;
