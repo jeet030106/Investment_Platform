@@ -9,23 +9,19 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
     throw new Error("JWT_SECRET must be at least 32 characters long");
 }
 
-export interface AuthenticatedRequest extends Request {
-    userId?: string;
-}
-
 export function authMiddleware(
-    req: AuthenticatedRequest,
+    req: Request,
     res: Response,
     next: NextFunction
-) {
-    const authorization = req.headers.authorization
+): void {
+    const authorization = req.headers.authorization;
 
     if (!authorization?.startsWith("Bearer ")) {
         res.status(401).json({
             success: false,
-            message: "Authentication token is required"
-        })
-        return
+            message: "Authentication token is required",
+        });
+        return;
     }
 
     const token = authorization.slice("Bearer ".length).trim();
@@ -39,7 +35,6 @@ export function authMiddleware(
     }
 
     try {
-
         const decoded = jwt.verify(token, JWT_SECRET, {
             issuer: JWT_ISSUER,
             audience: JWT_AUDIENCE,
@@ -58,7 +53,8 @@ export function authMiddleware(
             return;
         }
 
-        req.userId = decoded.sub;
+        // Match the property used by the watchlist controllers.
+        req.user = { user_id: decoded.sub };
 
         next();
     } catch {
