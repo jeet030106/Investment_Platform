@@ -56,22 +56,6 @@ export class WatchlistService {
 
         return deleted;
     }
-
-    async removeStockFromWatchlist(
-        watchlistStockId: string,
-        userId: string,
-    ) {
-        const deleted = await watchlistRepository.removeStock(
-            watchlistStockId,
-            userId,
-        );
-
-        if (!deleted) {
-            throw new Error("Watchlist stock not found");
-        }
-
-        return deleted;
-    }
 }
 
 export default WatchlistService;
