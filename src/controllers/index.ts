@@ -2,4 +2,4 @@ export { register, login } from "./auth-controller.js";
 export { createUser, getUser } from "./user-controller.js";
 export { searchStocks, listStocks, getStockDetails } from "./stock-controller.js"
 export { getPriceHistory } from "./stock-price-controller.js"
-export { createWatchList, updateWatchList, deleteWatchList } from "./watchlist-controller.js"
+export { createWatchList, updateWatchList, deleteWatchList, removeStockFromWatchlist } from "./watchlist-controller.js"
