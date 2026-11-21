@@ -2,6 +2,7 @@ export { default as UserRepository } from "./user-repository.js";
 
 export { default as StockRepository } from "./stock-repository.js";
 export { default as StockPriceRepository } from "./stock_price-repository.js";
+export { default as WatchlistRepository } from "./watchlist-repository.js";
 export type {
     CreateStockInput,
     ListStocksOptions,
