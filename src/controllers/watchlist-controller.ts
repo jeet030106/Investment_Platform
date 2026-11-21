@@ -1,167 +1,209 @@
-// controllers/watchlist-controller.ts
-import type { NextFunction, Request, Response } from "express";
-import { WatchlistService } from "../services/watchlist-service.js";
-
-interface AuthenticatedRequest extends Request {
-    user: {
-        user_id: string;
-    };
-}
+import type { Request, Response, NextFunction } from "express";
+import { WatchlistService } from "../services/index.js";
 
 const watchlistService = new WatchlistService();
 
-export const getAllWatchlists = async (
-    req: AuthenticatedRequest,
+function getWatchlistId(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim()
+        ? value
+        : undefined;
+}
+
+export async function getAllWatchlists(
+    req: Request,
     res: Response,
     next: NextFunction
-): Promise<void> => {
+): Promise<void> {
     try {
         const userId = req.user.user_id;
-        const watchlists = await watchlistService.getAllWatchlists(userId);
+        const data = await watchlistService.getAllWatchlists(userId);
 
-        res.status(200).json({ watchlists });
+        res.status(200).json({
+            success: true,
+            message: "Watchlists fetched successfully",
+            data,
+        });
     } catch (error) {
         next(error);
     }
-};
+}
 
-export const getWatchlistById = async (
-    req: AuthenticatedRequest,
+export async function getWatchlistById(
+    req: Request,
     res: Response,
     next: NextFunction
-): Promise<void> => {
+): Promise<void> {
     try {
-        const { watchlistId } = req.params;
-        const userId = req.user.user_id;
+        const watchlistId = getWatchlistId(req.params.watchlistId);
 
-        if (typeof watchlistId !== "string" || !watchlistId.trim()) {
-            res.status(400).json({ message: "A valid watchlistId is required" });
+        if (!watchlistId) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist ID is required",
+            });
             return;
         }
 
-        const watchlist = await watchlistService.getWatchlistById(
+        const userId = req.user.user_id;
+        const data = await watchlistService.getWatchlistById(
             watchlistId,
             userId
         );
 
-        if (!watchlist) {
-            res.status(404).json({ message: "Watchlist not found" });
-            return;
-        }
-
-        res.status(200).json({ watchlist });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const createWatchlist = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-): Promise<void> => {
-    try {
-        const { name } = req.body;
-        const userId = req.user.user_id;
-
-        if (typeof name !== "string" || !name.trim()) {
-            res.status(400).json({ message: "A valid name is required" });
-            return;
-        }
-
-        const watchlist = await watchlistService.createWatchlist(
-            userId,
-            name.trim()
-        );
-
-        res.status(201).json({ watchlist });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const updateWatchlist = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-): Promise<void> => {
-    try {
-        const { watchlistId } = req.params;
-        const { name } = req.body;
-        const userId = req.user.user_id;
-
-        if (typeof watchlistId !== "string" || !watchlistId.trim()) {
-            res.status(400).json({ message: "A valid watchlistId is required" });
-            return;
-        }
-
-        if (typeof name !== "string" || !name.trim()) {
-            res.status(400).json({ message: "A valid name is required" });
-            return;
-        }
-
-        const watchlist = await watchlistService.updateWatchlist(
-            watchlistId,
-            userId,
-            name.trim()
-        );
-
-        if (!watchlist) {
-            res.status(404).json({ message: "Watchlist not found" });
-            return;
-        }
-
-        res.status(200).json({ watchlist });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const deleteWatchlist = async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-): Promise<void> => {
-    try {
-        const { watchlistId } = req.params;
-        const userId = req.user.user_id;
-
-        if (typeof watchlistId !== "string" || !watchlistId.trim()) {
-            res.status(400).json({ message: "A valid watchlistId is required" });
-            return;
-        }
-
-        const watchlist = await watchlistService.deleteWatchlist(
-            watchlistId,
-            userId
-        );
-
-        if (!watchlist) {
-            res.status(404).json({ message: "Watchlist not found" });
+        if (!data) {
+            res.status(404).json({
+                success: false,
+                message: "Watchlist not found",
+            });
             return;
         }
 
         res.status(200).json({
+            success: true,
+            message: "Watchlist fetched successfully",
+            data,
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function createWatchlist(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const { name } = req.body;
+
+        if (typeof name !== "string" || !name.trim()) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist name is required",
+            });
+            return;
+        }
+
+        const userId = req.user.user_id;
+        const data = await watchlistService.createWatchlist(
+            userId,
+            name.trim()
+        );
+
+        res.status(201).json({
+            success: true,
+            message: "Watchlist created successfully",
+            data,
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateWatchlist(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const watchlistId = getWatchlistId(req.params.watchlistId);
+        const { name } = req.body;
+
+        if (!watchlistId) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist ID is required",
+            });
+            return;
+        }
+
+        if (typeof name !== "string" || !name.trim()) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist name is required",
+            });
+            return;
+        }
+
+        const userId = req.user.user_id;
+        const data = await watchlistService.updateWatchlist(
+            watchlistId,
+            userId,
+            name.trim()
+        );
+
+        if (!data) {
+            res.status(404).json({
+                success: false,
+                message: "Watchlist not found",
+            });
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Watchlist updated successfully",
+            data,
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function deleteWatchlist(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const watchlistId = getWatchlistId(req.params.watchlistId);
+
+        if (!watchlistId) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist ID is required",
+            });
+            return;
+        }
+
+        const userId = req.user.user_id;
+        const data = await watchlistService.deleteWatchlist(
+            watchlistId,
+            userId
+        );
+
+        if (!data) {
+            res.status(404).json({
+                success: false,
+                message: "Watchlist not found",
+            });
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
             message: "Watchlist deleted successfully",
-            watchlist,
+            data,
         });
     } catch (error) {
         next(error);
     }
-};
+}
 
-export const addStocksToWatchlist = async (
-    req: AuthenticatedRequest,
+export async function addStocksToWatchlist(
+    req: Request,
     res: Response,
     next: NextFunction
-): Promise<void> => {
+): Promise<void> {
     try {
-        const { watchlistId } = req.params;
+        const watchlistId = getWatchlistId(req.params.watchlistId);
         const { stockIds } = req.body;
-        const userId = req.user.user_id;
 
-        if (typeof watchlistId !== "string" || !watchlistId.trim()) {
-            res.status(400).json({ message: "A valid watchlistId is required" });
+        if (!watchlistId) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist ID is required",
+            });
             return;
         }
 
@@ -172,40 +214,51 @@ export const addStocksToWatchlist = async (
             )
         ) {
             res.status(400).json({
+                success: false,
                 message: "stockIds must be an array of non-empty strings",
             });
             return;
         }
 
-        const entries = await watchlistService.addStocksToWatchlist(
+        const userId = req.user.user_id;
+        const data = await watchlistService.addStocksToWatchlist(
             watchlistId,
             userId,
             stockIds
         );
 
-        if (!entries) {
-            res.status(404).json({ message: "Watchlist not found" });
+        if (!data) {
+            res.status(404).json({
+                success: false,
+                message: "Watchlist not found",
+            });
             return;
         }
 
-        res.status(201).json({ entries });
+        res.status(201).json({
+            success: true,
+            message: "Stocks added to watchlist successfully",
+            data,
+        });
     } catch (error) {
         next(error);
     }
-};
+}
 
-export const removeStocksFromWatchlist = async (
-    req: AuthenticatedRequest,
+export async function removeStocksFromWatchlist(
+    req: Request,
     res: Response,
     next: NextFunction
-): Promise<void> => {
+): Promise<void> {
     try {
-        const { watchlistId } = req.params;
+        const watchlistId = getWatchlistId(req.params.watchlistId);
         const { stockIds } = req.body;
-        const userId = req.user.user_id;
 
-        if (typeof watchlistId !== "string" || !watchlistId.trim()) {
-            res.status(400).json({ message: "A valid watchlistId is required" });
+        if (!watchlistId) {
+            res.status(400).json({
+                success: false,
+                message: "A valid watchlist ID is required",
+            });
             return;
         }
 
@@ -216,27 +269,33 @@ export const removeStocksFromWatchlist = async (
             )
         ) {
             res.status(400).json({
+                success: false,
                 message: "stockIds must be an array of non-empty strings",
             });
             return;
         }
 
-        const entries = await watchlistService.removeStocksFromWatchlist(
+        const userId = req.user.user_id;
+        const data = await watchlistService.removeStocksFromWatchlist(
             watchlistId,
             userId,
             stockIds
         );
 
-        if (!entries) {
-            res.status(404).json({ message: "Watchlist not found" });
+        if (!data) {
+            res.status(404).json({
+                success: false,
+                message: "Watchlist not found",
+            });
             return;
         }
 
         res.status(200).json({
-            message: "Stocks removed from watchlist",
-            entries,
+            success: true,
+            message: "Stocks removed from watchlist successfully",
+            data,
         });
     } catch (error) {
         next(error);
     }
-};
+}
