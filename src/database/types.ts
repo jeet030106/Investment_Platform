@@ -34,10 +34,32 @@ export interface StockPrices {
     created_at: Generated<Timestamp>;
 }
 
+export interface Watchlists {
+    watchlist_id: Generated<string>;
+    user_id: string;
+    name: string;
+    created_at: Generated<Timestamp>;
+}
+
+export interface Watchlists {
+    watchlist_id: Generated<string>;
+    user_id: string;
+    name: string;
+    created_at: Generated<Timestamp>;
+}
+
+export interface WatchlistStocks {
+    watchlist_stock_id: Generated<string>;
+    watchlist_id: string;
+    stock_id: string;
+}
+
 // -- Step 3 -- 
 // Create an interface that will be representing the structure of the DB
 export interface Database {
     "users": Users,
     "stocks": Stocks,
-    "stock_prices": StockPrices
+    "stock_prices": StockPrices,
+    "watchlists": Watchlists,
+    "watchlist_stocks": WatchlistStocks
 }
